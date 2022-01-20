@@ -29,6 +29,9 @@ Clone the repo using:
 From inside the main folder do:
 1. `cmake ./`
 2. `make`
+Note from Zenseact team:
+We also had to run 
+`sudo apt-get install libboost-all-dev`
 
 #### Usage:
 Run the evalutaion by:
