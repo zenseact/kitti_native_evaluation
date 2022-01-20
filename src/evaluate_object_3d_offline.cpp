@@ -55,7 +55,7 @@ const double N_SAMPLE_PTS = 41;
 
 // initialize class names
 void initGlobals () {
-  CLASS_NAMES.push_back("car");
+  CLASS_NAMES.push_back("vehicle");
   CLASS_NAMES.push_back("pedestrian");
   CLASS_NAMES.push_back("cyclist");
 }
@@ -375,7 +375,7 @@ vector<double> getThresholds(vector<double> &v, double n_groundtruth){
   return t;
 }
 
-void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vector<tDetection> &det, vector<int32_t> &ignored_gt, vector<tGroundtruth> &dc, vector<int32_t> &ignored_det, int32_t &n_gt, DIFFICULTY difficulty){
+void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vector<tDetection> &det, vector<int32_t> &ignored_gt, vector<tGroundtruth> &dc, vector<int32_t> &ignored_det, int32_t &n_gt, DIFFICULTY difficulty, METRIC metric){
 
   // extract ground truth bounding boxes for current evaluation class
   for(int32_t i=0;i<gt.size(); i++){
@@ -394,7 +394,7 @@ void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vect
     // classes with a neighboring class
     else if(!strcasecmp(CLASS_NAMES[current_class].c_str(), "Pedestrian") && !strcasecmp("Person_sitting", gt[i].box.type.c_str()))
       valid_class = 0;
-    else if(!strcasecmp(CLASS_NAMES[current_class].c_str(), "Car") && !strcasecmp("Van", gt[i].box.type.c_str()))
+    else if(!strcasecmp(CLASS_NAMES[current_class].c_str(), "Vehicle") && !strcasecmp("Van", gt[i].box.type.c_str()))
       valid_class = 0;
 
     // classes not used for evaluation
@@ -406,6 +406,13 @@ void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vect
     bool ignore = false;
     if(gt[i].occlusion>MAX_OCCLUSION[difficulty] || gt[i].truncation>MAX_TRUNCATION[difficulty] || height<=MIN_HEIGHT[difficulty])
       ignore = true;
+
+    // For some GT we do not have 3D properties. If that is the case they should be ignored during the computation of BEV & 3D AP.
+    if (metric == GROUND || metric == BOX3D){
+      if (gt[i].h == 0.0 && gt[i].w == 0.0 && gt[i].l == 0.0 && gt[i].t1 == 0.0 && gt[i].t2 == 0.0 && gt[i].t3 == 0.0 && gt[i].ry == 0.0){
+        ignore = true;
+      }
+    }
 
     // set ignored vector for ground truth
     // current class and not ignored (total no. of ground truth is detected for recall denominator)
@@ -659,7 +666,7 @@ bool eval_class (FILE *fp_det, FILE *fp_ori,CLASSES current_class,
     vector<tGroundtruth> dc;
 
     // only evaluate objects of current class and ignore occluded, truncated objects
-    cleanData(current_class, groundtruth[i], detections[i], i_gt, dc, i_det, n_gt, difficulty);
+    cleanData(current_class, groundtruth[i], detections[i], i_gt, dc, i_det, n_gt, difficulty, metric);
     ignored_gt.push_back(i_gt);
     ignored_det.push_back(i_det);
     dontcare.push_back(dc);
@@ -765,61 +772,8 @@ void saveAndPlotPlots(string dir_name,string file_name,string obj_type,vector<do
         for (int i = 1; i < vals[v].size(); i++)
             sum[v] += vals[v][i];
 
-    printf("%s : %f %f %f\n", file_name.c_str(), sum[0] / 40 * 100, sum[1] /
-            40 * 100, sum[2] / 40 * 100);
-
-
-
-  // create png + eps
-  for (int32_t j=0; j<2; j++) {
-
-    // open file
-    FILE *fp = fopen((dir_name + "/" + file_name + ".gp").c_str(),"w");
-
-    // save gnuplot instructions
-    if (j==0) {
-      fprintf(fp,"set term png size 450,315 font \"Helvetica\" 11\n");
-      fprintf(fp,"set output \"%s.png\"\n",file_name.c_str());
-    } else {
-      fprintf(fp,"set term postscript eps enhanced color font \"Helvetica\" 20\n");
-      fprintf(fp,"set output \"%s.eps\"\n",file_name.c_str());
-    }
-
-    // set labels and ranges
-    fprintf(fp,"set size ratio 0.7\n");
-    fprintf(fp,"set xrange [0:1]\n");
-    fprintf(fp,"set yrange [0:1]\n");
-    fprintf(fp,"set xlabel \"Recall\"\n");
-    if (!is_aos) fprintf(fp,"set ylabel \"Precision\"\n");
-    else         fprintf(fp,"set ylabel \"Orientation Similarity\"\n");
-    obj_type[0] = toupper(obj_type[0]);
-    fprintf(fp,"set title \"%s\"\n",obj_type.c_str());
-
-    // line width
-    int32_t   lw = 5;
-    if (j==0) lw = 3;
-
-    // plot error curve
-    fprintf(fp,"plot ");
-    fprintf(fp,"\"%s.txt\" using 1:2 title 'Easy' with lines ls 1 lw %d,",file_name.c_str(),lw);
-    fprintf(fp,"\"%s.txt\" using 1:3 title 'Moderate' with lines ls 2 lw %d,",file_name.c_str(),lw);
-    fprintf(fp,"\"%s.txt\" using 1:4 title 'Hard' with lines ls 3 lw %d",file_name.c_str(),lw);
-
-    // close file
-    fclose(fp);
-
-    // run gnuplot => create png + eps
-    sprintf(command,"cd %s; gnuplot %s",dir_name.c_str(),(file_name + ".gp").c_str());
-    system(command);
-  }
-
-  // create pdf and crop
-  sprintf(command,"cd %s; ps2pdf %s.eps %s_large.pdf",dir_name.c_str(),file_name.c_str(),file_name.c_str());
-  system(command);
-  sprintf(command,"cd %s; pdfcrop %s_large.pdf %s.pdf",dir_name.c_str(),file_name.c_str(),file_name.c_str());
-  system(command);
-  sprintf(command,"cd %s; rm %s_large.pdf",dir_name.c_str(),file_name.c_str());
-  system(command);
+    // we only print the AP for the MODERATE category
+    printf("%s : %f\n", file_name.c_str(), sum[1] / 40 * 100);
 }
 
 vector<int32_t> getEvalIndices(const string& result_dir) {
@@ -839,7 +793,7 @@ vector<int32_t> getEvalIndices(const string& result_dir) {
     return indices;
 }
 
-bool eval(string gt_dir, string result_dir, Mail* mail){
+bool eval(string gt_dir, string result_dir, Mail* mail, vector<double>& saved_metric_values){
 
   // set some global parameters
   initGlobals();
@@ -893,7 +847,7 @@ bool eval(string gt_dir, string result_dir, Mail* mail){
       return false;
     }
   }
-  mail->msg("  done.");
+  mail->msg("Done loading detections and ground truths.");
 
   // holds pointers for result files
   FILE *fp_det=0, *fp_ori=0;
@@ -915,6 +869,15 @@ bool eval(string gt_dir, string result_dir, Mail* mail){
       fclose(fp_det);
       saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_detection_AP",
                        CLASS_NAMES[c], precision, 0);
+
+      double summed_precision[3] = {0, 0, 0};
+      for (int v = 0; v < 3; ++v)
+          for (int i = 1; i < precision[v].size(); i++)
+              summed_precision[v] += precision[v][i];
+
+      // We only care about the category MODERATE
+      saved_metric_values.push_back(summed_precision[1] / 40.0 * 100.0);
+
       if(compute_aos){
         saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_orientation_AOS",
                          CLASS_NAMES[c], aos, 1);
@@ -925,7 +888,7 @@ bool eval(string gt_dir, string result_dir, Mail* mail){
 
   // don't evaluate AOS for birdview boxes and 3D boxes
   compute_aos = false;
-  compute_aos_ground = true;
+  compute_aos_ground = false;
   // eval bird's eye view bounding boxes
   for (int c = 0; c < NUM_CLASS; c++) {
     CLASSES cls = (CLASSES)c;
@@ -941,6 +904,16 @@ bool eval(string gt_dir, string result_dir, Mail* mail){
       fclose(fp_det);
       saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_detection_BEV_AP",
                        CLASS_NAMES[c], precision, 0);
+
+      double summed_precision[3] = {0, 0, 0};
+      for (int v = 0; v < 3; ++v)
+          for (int i = 1; i < precision[v].size(); i++)
+              summed_precision[v] += precision[v][i];
+
+      // We only care about the category MODERATE
+      saved_metric_values.push_back(summed_precision[1] / 40.0 * 100.0);
+
+
       if(compute_aos_ground)
           saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_orientation_BEV_AHS",
                            CLASS_NAMES[c], aos_ground, 1);
@@ -963,6 +936,16 @@ bool eval(string gt_dir, string result_dir, Mail* mail){
       fclose(fp_det);
       saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_detection_3D_AP",
                        CLASS_NAMES[c], precision, 0);
+      
+      double summed_precision[3] = {0, 0, 0};
+      for (int v = 0; v < 3; ++v)
+          for (int i = 1; i < precision[v].size(); i++)
+              summed_precision[v] += precision[v][i];
+
+      // We only care about the category MODERATE
+      saved_metric_values.push_back(summed_precision[1] / 40.0 * 100.0);
+
+
       if(compute_aos_ground)
           saveAndPlotPlots(plot_dir, CLASS_NAMES[c] + "_orientation_3D_AHS",
                            CLASS_NAMES[c], aos_ground, 1);    }
@@ -988,10 +971,10 @@ int32_t main (int32_t argc,char *argv[]) {
   // init notification mail
   Mail *mail;
   mail = new Mail();
-  //mail->msg("Thank you for participating in our evaluation!");
-
+  
+  vector<double> computed_metric_values;
   // run evaluation
-  if (eval(gt_dir, result_dir, mail)) {
+  if (eval(gt_dir, result_dir, mail, computed_metric_values)) {
     //mail->msg("Your evaluation results are available at:");
     //mail->msg(result_dir.c_str());
   } else {
@@ -999,6 +982,12 @@ int32_t main (int32_t argc,char *argv[]) {
     mail->msg("An error occured while processing your results.");
   }
 
+
+  float hackathon_score = accumulate(computed_metric_values.begin(), computed_metric_values.end(), 0.0) / (double)computed_metric_values.size();
+  printf("----------------------------\n");
+  printf("Your hackathon score is: %f\n", hackathon_score);
+  printf("----------------------------\n");
+  
   // send mail and exit
   delete mail;
 
