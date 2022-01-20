@@ -983,7 +983,7 @@ int32_t main (int32_t argc,char *argv[]) {
   }
 
 
-  float hackathon_score = accumulate(computed_metric_values.begin(), computed_metric_values.end(), 0.0) / (double)computed_metric_values.size();
+  float hackathon_score = accumulate(computed_metric_values.begin(), computed_metric_values.end(), 0.0) / 9.0;
   printf("----------------------------\n");
   printf("Your hackathon score is: %f\n", hackathon_score);
   printf("----------------------------\n");
