@@ -812,7 +812,7 @@ bool eval(string gt_dir, string result_dir, Mail* mail, vector<double>& saved_me
 
   // holds wether orientation similarity shall be computed (might be set to false while loading detections)
   // and which labels where provided by this submission
-  bool compute_aos=true;
+  bool compute_aos=false;
   bool compute_aos_ground=false;
   vector<bool> eval_image(NUM_CLASS, false);
   vector<bool> eval_ground(NUM_CLASS, false);
